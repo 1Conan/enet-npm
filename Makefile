@@ -1,6 +1,6 @@
-EMCC=`./find-emcc.py`/emcc
+EMCC=emcc
 #todo - refactor src/library_inet.js and src/library_node_sockets.js to handle closure compiler before enabling it
-OPTIMISE= -O2 --closure 0 -s ASM_JS=1 --llvm-opts 1 --memory-init-file 0
+OPTIMISE= -O3 --closure 0 -s WASM=1 --llvm-opts 1 --memory-init-file 0
 ENET_SOURCE=./src/enet
 
 EXPORTED_FUNCTIONS= -s EXPORTED_FUNCTIONS="[ \
