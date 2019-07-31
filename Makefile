@@ -47,6 +47,7 @@ EXPORTED_FUNCTIONS= -s EXPORTED_FUNCTIONS="[ \
 	'_jsapi_peer_get_reliableDataInTransit' ]"
 
 module:
+	mkdir -p build
 	$(EMCC) src/jsapi.c $(ENET_SOURCE)/*.c -I$(ENET_SOURCE)/include \
 		--pre-js src/enet_pre.js -o build/enet_.js $(OPTIMISE) \
 		--js-library src/library_node_sockets.js --js-library src/library_inet.js \
