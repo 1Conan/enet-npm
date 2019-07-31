@@ -130,7 +130,7 @@ mergeInto(LibraryManager.library, {
             ___setErrNo(ERRNO_CODES.EACCES);
 #if SOCKET_DEBUG
             console.log(e);
-#end if
+#endif
             return -1;
         }
     },
