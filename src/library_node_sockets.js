@@ -32,16 +32,10 @@ mergeInto(LibraryManager.library, {
         return (addr & 0xff) + '.' + ((addr >> 8) & 0xff) + '.' + ((addr >> 16) & 0xff) + '.' + ((addr >> 24) & 0xff)
     },
     DGRAM:function(){
-#if CHROME_SOCKETS
-        if((typeof window !== 'undefined') && window["chrome"] && window["chrome"]["socket"]) return NodeSockets.ChromeDgram();
-#endif
         if(typeof require !== 'undefined') return require("dgram");//node or browserified
         assert(false,"no dgram sockets backend found!");
     },
     NET:function(){
-#if CHROME_SOCKETS
-        if((typeof window !== 'undefined') && window["chrome"] && window["chrome"]["socket"]) return NodeSockets.ChromeNet();
-#endif
         if(typeof require !== 'undefined') return require("net");//node or browserified
         assert(false, "no tcp socket backend found!");
     },
@@ -53,155 +47,6 @@ mergeInto(LibraryManager.library, {
       }
       return uint8Array;
     },
-#if CHROME_SOCKETS
-    ChromeNet: undefined,       /* use https://github.com/GoogleChrome/net-chromeify.git ? (Apache license)*/
-    ChromeDgram: function(){
-        /*
-         *  node dgram API from chrome.socket API - using Uint8Array() instead of Buffer()
-         *  Copyright (C) 2013 Mokhtar Naamani
-         *  license: MIT
-         */
-        var exports = {};
-
-        exports["createSocket"] = function (type, message_event_callback){
-            assert( type === 'udp4', "only supporting udp4 sockets in chrome");
-            return new UDPSocket(message_event_callback);
-        }
-
-        function UDPSocket(msg_evt_cb){
-            var self = this;
-            self._is_chrome_socket = true;
-            self._event_listeners = {};
-
-            self["on"]("listening",function(){
-                //send pending datagrams..
-                self.__pending.forEach(function(job){
-                    job.socket_id = self.__socket_id;
-                    send_datagram(job);            
-                });
-                delete self.__pending;
-                //start polling socket for incoming datagrams
-                self.__poll_interval = setInterval(do_recv,30);
-#if SOCKET_DEBUG
-                console.log("chrome socket bound to:",JSON.stringify(self.address()));
-#endif
-            });
-
-            if(msg_evt_cb) self["on"]("message",msg_evt_cb);
-
-            function do_recv(){
-                if(!self.__socket_id) return;
-                window["chrome"]["socket"]["recvFrom"](self.__socket_id, undefined, function(info){
-                    var buff;
-                    //todo - set correct address family
-                    //todo - error detection.
-                    if(info["resultCode"] > 0){
-                        buff = new Uint8Array(info["data"]);
-                        self["emit"]("message",buff,{"address":info["address"],"port":info["port"],"size":info["data"]["byteLength"],"family":"IPv4"});
-                    }
-                });
-            }
-            self.__pending = [];//queued datagrams to send (if app tried to send before socket is ready)
-        }
-
-        UDPSocket.prototype["on"] = function(evt,callback){
-            //used to register callbacks
-            //store event name e in this._events 
-            this._event_listeners[evt] ? this._event_listeners[evt].push(callback) : this._event_listeners[evt]=[callback];
-        };
-
-        UDPSocket.prototype["emit"] = function(e){
-            //used internally to fire events
-            //'apply' event handler function  to 'this' channel pass eventname 'e' and arguemnts.slice(1)
-            var self = this;
-            var args = Array.prototype.slice.call(arguments);
-
-            if(this._event_listeners && this._event_listeners[e]){
-                this._event_listeners[e].forEach(function(cb){
-                    cb.apply(self,args.length>1?args.slice(1):[undefined]);
-                });
-            }
-        };
-
-        UDPSocket.prototype["close"] = function(){
-            //Close the underlying socket and stop listening for data on it.
-            if(!self.__socket_id) return;
-            window["chrome"]["socket"]["destroy"](self.__socket_id);
-            clearInterval(self.__poll_interval);
-            delete self.__poll_interval;
-        };
-
-        UDPSocket.prototype["bind"] = function(port,address){
-            var self = this;
-            address = address || "0.0.0.0";
-            port = port || 0;
-            if(self.__socket_id || self.__bound ) return;//only bind once!
-            self.__bound = true;
-            window["chrome"]["socket"]["create"]('udp',{},function(socketInfo){
-                self.__socket_id = socketInfo["socketId"];
-                window["chrome"]["socket"]["bind"](self.__socket_id,address,port,function(result){
-                    window["chrome"]["socket"]["getInfo"](self.__socket_id,function(info){
-                      self.__local_address = info["localAddress"];
-                      self.__local_port = info["localPort"];
-                      self["emit"]("listening");
-                    });
-                });
-            });
-        };
-
-        UDPSocket.prototype["address"] = function(){
-            return({"address":this.__local_address,"port":this.__local_port});
-        };
-
-        UDPSocket.prototype["setBroadcast"] = function(flag){
-            //do chrome udp sockets support broadcast?
-#if SOCKET_DEBUG
-            console.log("setting broadcast on chrome socket to:",flag);
-#endif
-        };
-
-        UDPSocket.prototype["send"] = function(buff, offset, length, port, address, callback){
-            var self = this;
-            var job = {
-                    socket_id:self.__socket_id,
-                    buff:buff,
-                    offset:offset,
-                    length:length,
-                    port:port,
-                    address:address,
-                    callback:callback
-            };
-            if(!self.__socket_id){
-                 if(!self.__bound) self.bind();
-                 self.__pending.push(job);
-            }else{
-                send_datagram(job);
-            }
-
-        };
-
-        function send_datagram(job){
-            var data;
-            var buff;
-            var i;
-            if(job.offset == 0 && job.length == job.buff.length){ 
-                buff = job.buff;
-            }else{
-                buff = job.buff.subarray(job.offset,job.offset+job.length);
-            }
-            data = buff.buffer;
-            window["chrome"]["socket"]["sendTo"](job.socket_id,data,job.address,job.port,function(result){
-                var err;
-                if(result["bytesWritten"] < data.byteLength ) err = 'truncation-error';
-                if(result["bytesWritten"] < 0 ) err = 'send-error';
-                if(job.callback) job.callback(err,result["bytesWritten"]);
-            });
-        }
-
-         return exports;
-
-        },
-#endif
    },
    close__deps: ['$FS', '__setErrNo', '$ERRNO_CODES'],
    close: function(fildes) {
